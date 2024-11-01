@@ -36,8 +36,6 @@ SGX_MODE ?= HW
 SGX_ARCH ?= x64
 SGX_DEBUG ?= 1
 
-include $(SGX_SDK)/buildenv.mk
-
 ifeq ($(shell getconf LONG_BIT), 32)
     SGX_ARCH := x86
 else ifeq ($(findstring -m32, $(CXXFLAGS)), -m32)
@@ -83,8 +81,7 @@ else
     Urts_Library_Name := sgx_urts
 endif
 
-App_Cpp_Files := App/App.cpp $(wildcard App/Edger8rSyntax/*.cpp) $(wildcard App/TrustedLibrary/*.cpp)
-# App_Include_Paths := -IInclude -IApp -I$(SGX_SDK)/include
+App_Cpp_Files := $(wildcard App/*.cpp)
 App_Include_Paths := -IApp -I$(SGX_SDK)/include
 
 
@@ -102,10 +99,11 @@ else
         App_C_Flags += -DNDEBUG -UEDEBUG -UDEBUG
 endif
 
-App_Cpp_Flags := $(App_C_Flags)
+App_Cpp_Flags := -std=c++0x $(App_C_Flags)
 App_Link_Flags := -L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) -lpthread 
 
 App_Cpp_Objects := $(App_Cpp_Files:.cpp=.o)
+App_Objects := App/Enclave_u.o App/Enclave_Seal_u.o $(App_Cpp_Files:.cpp=.o)
 
 App_Name := app
 
@@ -120,8 +118,6 @@ else
 endif
 Crypto_Library_Name := sgx_tcrypto
 
-Enclave_Cpp_Files := Enclave/Enclave.cpp $(wildcard Enclave/Edger8rSyntax/*.cpp) $(wildcard Enclave/TrustedLibrary/*.cpp)
-# Enclave_Include_Paths := -IInclude -IEnclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx
 Enclave_Include_Paths := -IEnclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx
 
 
@@ -146,7 +142,7 @@ Enclave_Security_Link_Flags := -Wl,-z,relro,-z,now,-z,noexecstack
 # Do NOT move the libraries linked with `--start-group' and `--end-group' within `--whole-archive' and `--no-whole-archive' options.
 # Otherwise, you may get some undesirable errors.
 Enclave_Link_Flags := $(MITIGATION_LDFLAGS) $(Enclave_Security_Link_Flags) \
-    -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L$(SGX_TRUSTED_LIBRARY_PATH) \
+    -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L$(SGX_LIBRARY_PATH) \
 	-Wl,--whole-archive -l$(Trts_Library_Name) -Wl,--no-whole-archive \
 	-Wl,--start-group -lsgx_tstdc -lsgx_tcxx -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
 	-Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
@@ -154,12 +150,24 @@ Enclave_Link_Flags := $(MITIGATION_LDFLAGS) $(Enclave_Security_Link_Flags) \
 	-Wl,--defsym,__ImageBase=0 -Wl,--gc-sections   \
 	# -Wl,--version-script=Enclave/Enclave.lds
 
+# Enclave
+Enclave_Cpp_Files := Enclave/Enclave.cpp $(wildcard Enclave/Edger8rSyntax/*.cpp) $(wildcard Enclave/TrustedLibrary/*.cpp)
+# Enclave_Cpp_Files := $(wildcard Enclave/*.cpp)
 Enclave_Cpp_Objects := $(sort $(Enclave_Cpp_Files:.cpp=.o))
 
 Enclave_Name := enclave.so
 Signed_Enclave_Name := enclave.signed.so
 Enclave_Config_File := Enclave/Enclave.config.xml
 Enclave_Test_Key := Enclave/Enclave_private_test.pem
+
+# Enclave_Seal
+Enclave_Seal_Cpp_Files := $(wildcard Enclave_Seal/*.cpp)
+Enclave_Seal_Cpp_Objects := $(sort $(Enclave_Seal_Cpp_Files:.cpp=.o))
+
+Enclave_Seal_Name := enclave_seal.so
+Signed_Enclave_Seal_Name := enclave_seal.signed.so
+Enclave_Seal_Config_File := Enclave_Seal/Enclave_Seal.config.xml
+Enclave_Seal_Test_Key := Enclave_Seal/Enclave_private_test.pem
 
 ifeq ($(SGX_MODE), HW)
 ifeq ($(SGX_DEBUG), 1)
@@ -185,17 +193,18 @@ all: .config_$(Build_Mode)_$(SGX_ARCH)
 	@$(MAKE) target
 
 ifeq ($(Build_Mode), HW_RELEASE)
-target:  $(App_Name) $(Enclave_Name)
+target:  $(App_Name) $(Enclave_Name) $(Enclave_Seal_Name)
 	@echo "The project has been built in release hardware mode."
-	@echo "Please sign the $(Enclave_Name) first with your signing key before you run the $(App_Name) to launch and access the enclave."
+	@echo "Please sign the enclaves $(Enclave_Name) and $(Enclave_Seal_Name) first with your signing key before you run the $(App_Name) to launch and access the enclave."
 	@echo "To sign the enclave use the command:"
 	@echo "   $(SGX_ENCLAVE_SIGNER) sign -key <your key> -enclave $(Enclave_Name) -out <$(Signed_Enclave_Name)> -config $(Enclave_Config_File)"
+	@echo "   $(SGX_ENCLAVE_SIGNER) sign -key <your key> -enclave $(Enclave_Seal_Name) -out <$(Signed_Enclave_Seal_Name)> -config $(Enclave_Seal_Config_File)"
 	@echo "You can also sign the enclave using an external signing tool."
 	@echo "To build the project in simulation mode set SGX_MODE=SIM. To build the project in prerelease mode set SGX_PRERELEASE=1 and SGX_MODE=HW."
 
 
 else
-target: $(App_Name) $(Signed_Enclave_Name)
+target: $(App_Name) $(Signed_Enclave_Name) $(Signed_Enclave_Seal_Name)
 ifeq ($(Build_Mode), HW_DEBUG)
 	@echo "The project has been built in debug hardware mode."
 else ifeq ($(Build_Mode), SIM_DEBUG)
@@ -218,6 +227,7 @@ endif
 
 .config_$(Build_Mode)_$(SGX_ARCH):
 	@rm -f .config_* $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) App/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.*
+	@rm -f $(Enclave_Seal_Name) $(Signed_Enclave_Seal_Name) App/Enclave_Seal_u.* $(Enclave_Seal_Cpp_Objects) Enclave_Seal/Enclave_Seal_t.*
 	@touch .config_$(Build_Mode)_$(SGX_ARCH)
 
 ######## App Objects ########
@@ -232,12 +242,25 @@ App/Enclave_u.o: App/Enclave_u.c
 	@$(CC) $(SGX_COMMON_CFLAGS) $(App_C_Flags) -c $< -o $@
 	@echo "CC   <=  $<"
 
-App/%.o: App/%.cpp  App/Enclave_u.h
+App/Enclave_Seal_u.h: $(SGX_EDGER8R) Enclave_Seal/Enclave_Seal.edl
+	@cd App && $(SGX_EDGER8R) --untrusted ../Enclave_Seal/Enclave_Seal.edl --search-path ../Enclave_Seal --search-path $(SGX_SDK)/include
+	@echo "GEN  =>  $@"
+
+App/Enclave_Seal_u.c: App/Enclave_Seal_u.h
+
+App/Enclave_Seal_u.o: App/Enclave_Seal_u.c
+	@$(CC) $(SGX_COMMON_CFLAGS) $(App_C_Flags) -c $< -o $@
+	@echo "CC   <=  $<"
+
+App/%.o: App/%.cpp  App/Enclave_u.h App/Enclave_Seal_u.h
 	@$(CXX) $(SGX_COMMON_CXXFLAGS) $(App_Cpp_Flags) -c $< -o $@
 	@echo "CXX  <=  $<"
 
-$(App_Name): App/Enclave_u.o $(App_Cpp_Objects)
-	@$(CXX) $^ -o $@ $(App_Link_Flags)
+$(App_Objects): App/Enclave_u.o App/Enclave_Seal_u.o
+
+# $(App_Name): App/Enclave_u.o $(App_Cpp_Objects) App/Enclave_Seal_u.o
+$(App_Name): $(App_Objects)
+	@$(CXX) $(SGX_COMMON_CXXFLAGS) $^ -o $@ $(App_Link_Flags)
 	@echo "LINK =>  $@"
 
 ######## Enclave Objects ########
@@ -269,8 +292,33 @@ endif
 	@$(SGX_ENCLAVE_SIGNER) sign -key $(Enclave_Test_Key) -enclave $(Enclave_Name) -out $@ -config $(Enclave_Config_File)
 	@echo "SIGN =>  $@"
 
+Enclave_Seal/Enclave_Seal_t.h: $(SGX_EDGER8R) Enclave_Seal/Enclave_Seal.edl
+	@cd Enclave_Seal && $(SGX_EDGER8R) --trusted ../Enclave_Seal/Enclave_Seal.edl --search-path ../Enclave_Seal --search-path $(SGX_SDK)/include
+	@echo "GEN  =>  $@"
+
+Enclave_Seal/Enclave_Seal_t.c: Enclave_Seal/Enclave_Seal_t.h
+
+Enclave_Seal/Enclave_Seal_t.o: Enclave_Seal/Enclave_Seal_t.c
+	@$(CC) $(SGX_COMMON_CFLAGS) $(Enclave_C_Flags) -c $< -o $@
+	@echo "CC   <=  $<"
+
+$(Enclave_Seal_Name): Enclave_Seal/Enclave_Seal_t.o $(Enclave_Seal_Cpp_Objects)
+	@$(CXX) $^ -o $@ $(Enclave_Link_Flags) -Wl,--version-script=Enclave_Seal/Enclave_Seal.lds
+	@echo "LINK =>  $@"
+
+$(Signed_Enclave_Seal_Name): $(Enclave_Seal_Name)
+ifeq ($(wildcard $(Enclave_Seal_Test_Key)),)
+	@echo "There is no enclave test key<Enclave_private_test.pem>."
+	@echo "The project will generate a key<Enclave_private_test.pem> for test."
+	@openssl genrsa -out $(Enclave_Seal_Test_Key) -3 3072
+endif
+	@$(SGX_ENCLAVE_SIGNER) sign -key $(Enclave_Seal_Test_Key) -enclave $(Enclave_Seal_Name) -out $@ -config $(Enclave_Seal_Config_File)
+	@echo "SIGN =>  $@"
+
+
 .PHONY: clean
 
 clean:
 	@rm -f .config_* $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) App/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* $(Enclave_Test_Key)
+	@rm -f $(Enclave_Seal_Name) $(Signed_Enclave_Seal_Name) App/Enclave_Seal_u.* $(Enclave_Seal_Cpp_Objects) Enclave_Seal/Enclave_Seal_t.* $(Enclave_Seal_Test_Key)
 

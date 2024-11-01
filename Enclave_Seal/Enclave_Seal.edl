@@ -1,0 +1,10 @@
+enclave {
+    trusted {
+        public uint32_t ecall_calc_sealed_len(uint32_t data_len);
+        public void ecall_seal_data(uint32_t data_len, [in, size=data_len] uint8_t *data, uint32_t sealed_len, [in, out, size=sealed_len] uint8_t *sealed);
+    };
+
+    untrusted {
+    };
+};
+
