@@ -5,3 +5,6 @@ App/Enclave_u.*
 Enclave/*.o
 Enclave/Enclave_t.*
 
+.config_*
+*.dat
+
