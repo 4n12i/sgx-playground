@@ -11,6 +11,18 @@
 
 char encrypt_data[BUFSIZ] = "data to encrypt";
 
+uint32_t ecall_calc_unsealed_len(uint32_t sealed_len, uint8_t *sealed)
+{
+    return sgx_get_encrypt_txt_len((const sgx_sealed_data_t *)sealed);
+}
+
+void ecall_unseal_data(uint32_t sealed_len, uint8_t *sealed, uint32_t unsealed_len, uint8_t *unsealed)
+{
+    sgx_status_t ret = sgx_unseal_data((const sgx_sealed_data_t *)sealed, NULL, 0, unsealed, &unsealed_len);
+
+    ocall_print_status(ret);
+}
+
 /* determine how much memory to allocate for the `sgx_sealed_data_t` structure */
 uint32_t ecall_calc_sealed_len()
 {

@@ -32,6 +32,40 @@ void ocall_example()
     return;
 }
 
+static size_t get_file_size(const char *filename)
+{
+    std::ifstream ifs(filename, std::ios::binary | std::ios::in);
+    if (!ifs.good())
+    {
+        std::cerr << "failed to open the file \"" << filename << "\"" << std::endl;
+        return -1;
+    }
+    ifs.seekg(0, std::ios::end);
+    size_t size = (size_t)ifs.tellg();
+    return size;
+}
+
+static bool read_file_to_buf(const char *filename, uint8_t *sealed, uint32_t sealed_len)
+{
+    if (filename == NULL)
+    {
+        return false;
+    }
+    std::ifstream ifs(filename, std::ios::binary | std::ios::in);
+    if (!ifs.good())
+    {
+        std::cerr << "failed to open the file \"" << filename << "\"" << std::endl;
+        return false;
+    }
+    ifs.read((char*)sealed, sealed_len);
+    if (ifs.fail())
+    {
+        std::cerr << "failed to read the file \"" << filename << "\"" << std::endl;
+        return false;
+    }
+    return true;
+}
+
 static bool write_buf_to_file(const char *filename, uint8_t *sealed, uint32_t sealed_len)
 {
     if (filename == NULL)
@@ -41,19 +75,58 @@ static bool write_buf_to_file(const char *filename, uint8_t *sealed, uint32_t se
     std::ofstream ofs(filename, std::ios::binary | std::ios::out); /* prepare a file stream */
     if (!ofs.good())
     {
-        std::cout << "failed to open the file \"" << filename << "\"" << std::endl;
+        std::cerr << "failed to open the file \"" << filename << "\"" << std::endl;
         return false;
     }
     ofs.write((const char*)sealed, sealed_len);
     if (ofs.fail())
     {
-        std::cout << "failed to open the file \"" << filename << "\"" << std::endl;
+        std::cerr << "failed to write the file \"" << filename << "\"" << std::endl;
         return false;
     }
-
     return true;
 }
 
+/* read the sealed data and decrypt it */
+bool test_unseal_data()
+{
+    sgx_status_t ret = SGX_ERROR_UNEXPECTED;
+    uint8_t *sealed;
+    uint32_t sealed_len;
+    uint8_t *unsealed;
+    uint32_t unsealed_len;
+
+    /* read the sealed blob from the file */
+    sealed_len = (uint32_t)get_file_size(SEALED_DATA_FILE);
+    if (sealed_len == (uint32_t)-1)
+    {
+        std::cerr << "failed to get the file size of \"" << SEALED_DATA_FILE << "\"" << std::endl;
+        return false;
+    }
+    sealed = new uint8_t[sealed_len];
+    if (!read_file_to_buf(SEALED_DATA_FILE, sealed, sealed_len))
+    {
+        std::cerr << "failed to read the sealed data blob from \"" << SEALED_DATA_FILE << "\"" << std::endl;
+        return false;
+    }
+
+    /* unseal the sealed blob */
+    ret = ecall_calc_unsealed_len(global_eid, &unsealed_len, sealed_len, sealed);
+    unsealed = new uint8_t[unsealed_len];
+
+    ret = ecall_unseal_data(global_eid, sealed_len, sealed, unsealed_len, unsealed);
+    if (ret != SGX_SUCCESS)
+    {
+        return false;
+    }
+
+    std::cout << "unsealed data: " << std::string((char*)unsealed, unsealed_len) << std::endl;
+
+    std::cout << "unseal succeeded" << std::endl;
+    return true;
+}
+
+/* encrypt the data and save it to the file */
 bool test_seal_data()
 {
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
@@ -82,6 +155,7 @@ bool test_seal_data()
     return true;
 }
 
+/* call ECALL example */
 bool test_example()
 {
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
@@ -128,7 +202,12 @@ int main()
     {
         std::cerr << "test_seal_data failed" << std::endl;
     }
-    /* destroy theh enclave */
+    if (!test_unseal_data())
+    {
+        std::cerr << "test_unseal_data failed" << std::endl;
+    }
+
+    /* destroy the enclave */
     sgx_destroy_enclave(global_eid);
 
     std::cout << "successfully completed" << std::endl;
