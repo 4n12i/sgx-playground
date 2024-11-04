@@ -1,9 +1,8 @@
-enclave.*
+*.so
 app
-App/*.o
-App/Enclave_u.*
-Enclave/*.o
-Enclave/Enclave_t.*
+*.o
+*Enclave_t.*
+*Enclave_u.*
 
 .config_*
 *.dat

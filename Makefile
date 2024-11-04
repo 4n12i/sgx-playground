@@ -73,7 +73,7 @@ SGX_COMMON_FLAGS += -Wall -Wextra -Winit-self -Wpointer-arith -Wreturn-type \
                     -Wmissing-include-dirs -Wfloat-equal -Wundef -Wshadow \
                     -Wcast-align -Wcast-qual -Wconversion -Wredundant-decls
 SGX_COMMON_CFLAGS := $(SGX_COMMON_FLAGS) -Wjump-misses-init -Wstrict-prototypes -Wunsuffixed-float-constants
-SGX_COMMON_CXXFLAGS := $(SGX_COMMON_FLAGS) -Wnon-virtual-dtor -std=c++11
+# SGX_COMMON_CXXFLAGS := $(SGX_COMMON_FLAGS) -Wnon-virtual-dtor -std=c++11
 
 ######## App Settings ########
 
@@ -87,7 +87,7 @@ App_Cpp_Files := App/App.cpp $(wildcard App/Edger8rSyntax/*.cpp) $(wildcard App/
 App_Include_Paths := -IApp -I$(SGX_SDK)/include
 
 
-App_C_Flags := -fPIC -Wno-attributes $(App_Include_Paths)
+App_C_Flags := $(SGX_COMMON_CFLAGS) -fPIC -Wno-attributes $(App_Include_Paths)
 
 # Three configuration modes - Debug, prerelease, release
 #   Debug - Macro DEBUG enabled.
@@ -101,7 +101,7 @@ else
         App_C_Flags += -DNDEBUG -UEDEBUG -UDEBUG
 endif
 
-App_Cpp_Flags := $(App_C_Flags)
+App_Cpp_Flags := $(App_C_Flags) # -std=c++11
 App_Link_Flags := -L$(SGX_LIBRARY_PATH) -l$(Urts_Library_Name) -lpthread 
 
 App_Cpp_Objects := $(App_Cpp_Files:.cpp=.o)
@@ -117,6 +117,7 @@ else
     Trts_Library_Name := sgx_trts
     Service_Library_Name := sgx_tservice
 endif
+
 Crypto_Library_Name := sgx_tcrypto
 
 Enclave_Cpp_Files := Enclave/Enclave.cpp $(wildcard Enclave/Edger8rSyntax/*.cpp) $(wildcard Enclave/TrustedLibrary/*.cpp)
@@ -152,12 +153,101 @@ Enclave_Link_Flags := $(MITIGATION_LDFLAGS) $(Enclave_Security_Link_Flags) \
 	-Wl,--defsym,__ImageBase=0 -Wl,--gc-sections   \
 	# -Wl,--version-script=Enclave/Enclave.lds
 
-Enclave_Cpp_Objects := $(sort $(Enclave_Cpp_Files:.cpp=.o))
+Enclave_Cpp_Objects := $(Enclave_Cpp_Files:.cpp=.o)
 
 Enclave_Name := enclave.so
 Signed_Enclave_Name := enclave.signed.so
 Enclave_Config_File := Enclave/Enclave.config.xml
 Enclave_Test_Key := Enclave/Enclave_private_test.pem
+
+
+######## Initiator Enclave Settings ########
+
+# ifneq ($(SGX_MODE), HW)
+#     Trts_Library_Name := sgx_trts_sim
+#     Service_Library_Name := sgx_tservice_sim
+# else
+#     Trts_Library_Name := sgx_trts
+#     Service_Library_Name := sgx_tservice
+# endif
+# 
+# Crypto_Library_Name := sgx_tcrypto
+
+Initiator_Enclave_Cpp_Files := Initiator_Enclave/Initiator_Enclave.cpp 
+Initiator_Enclave_Include_Paths := -IInitiator_Enclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx 
+
+
+Initiator_Enclave_C_Flags := $(Initiator_Enclave_Include_Paths) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections $(MITIGATION_CFLAGS)
+CC_BELOW_4_9 := $(shell expr "`$(CC) -dumpversion`" \< "4.9")
+ifeq ($(CC_BELOW_4_9), 1)
+    Initiator_Enclave_C_Flags += -fstack-protector
+else
+    Initiator_Enclave_C_Flags += -fstack-protector-strong
+endif
+
+Initiator_Enclave_Cpp_Flags := $(Initiator_Enclave_C_Flags) -nostdinc++ # -std=c++11
+
+Initiator_Enclave_Link_Flags := $(MITIGATION_LDFLAGS) $(Enclave_Security_Link_Flags) \
+    -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L$(SGX_TRUSTED_LIBRARY_PATH) \
+	-Wl,--whole-archive -l$(Trts_Library_Name) -Wl,--no-whole-archive \
+	-Wl,--start-group -lsgx_tstdc -lsgx_tcxx -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
+	-Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
+	-Wl,-pie,-eenclave_entry -Wl,--export-dynamic  \
+	-Wl,--defsym,__ImageBase=0 -Wl,--gc-sections   \
+	# -Wl,--version-script=Enclave/Enclave.lds
+
+Initiator_Enclave_Cpp_Objects := $(Initiator_Enclave_Cpp_Files:.cpp=.o)
+
+Initiator_Enclave_Name := initiator_enclave.so
+Initiator_Signed_Enclave_Name := initiator_enclave.signed.so
+Initiator_Enclave_Config_File := Initiator_Enclave/Enclave.config.xml
+Initiator_Enclave_Test_Key := Initiator_Enclave/Initiator_Enclave_private_test.pem
+
+
+######## Responder Enclave Settings ########
+
+# ifneq ($(SGX_MODE), HW)
+#     Trts_Library_Name := sgx_trts_sim
+#     Service_Library_Name := sgx_tservice_sim
+# else
+#     Trts_Library_Name := sgx_trts
+#     Service_Library_Name := sgx_tservice
+# endif
+# 
+# Crypto_Library_Name := sgx_tcrypto
+
+Responder_Enclave_Cpp_Files := Responder_Enclave/Responder_Enclave.cpp 
+Responder_Enclave_Include_Paths := -IResponder_Enclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx 
+
+
+Responder_Enclave_C_Flags := $(Responder_Enclave_Include_Paths) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections $(MITIGATION_CFLAGS)
+CC_BELOW_4_9 := $(shell expr "`$(CC) -dumpversion`" \< "4.9")
+ifeq ($(CC_BELOW_4_9), 1)
+    Responder_Enclave_C_Flags += -fstack-protector
+else
+    Responder_Enclave_C_Flags += -fstack-protector-strong
+endif
+
+Responder_Enclave_Cpp_Flags := $(Responder_Enclave_C_Flags) -nostdinc++ # -std=c++11
+
+Responder_Enclave_Link_Flags := $(MITIGATION_LDFLAGS) $(Enclave_Security_Link_Flags) \
+    -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles -L$(SGX_TRUSTED_LIBRARY_PATH) \
+	-Wl,--whole-archive -l$(Trts_Library_Name) -Wl,--no-whole-archive \
+	-Wl,--start-group -lsgx_tstdc -lsgx_tcxx -l$(Crypto_Library_Name) -l$(Service_Library_Name) -Wl,--end-group \
+	-Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
+	-Wl,-pie,-eenclave_entry -Wl,--export-dynamic  \
+	-Wl,--defsym,__ImageBase=0 -Wl,--gc-sections   \
+	# -Wl,--version-script=Enclave/Enclave.lds
+
+Responder_Enclave_Cpp_Objects := $(Responder_Enclave_Cpp_Files:.cpp=.o)
+
+Responder_Enclave_Name := responder_enclave.so
+Responder_Signed_Enclave_Name := responder_enclave.signed.so
+Responder_Enclave_Config_File := Responder_Enclave/Enclave.config.xml
+Responder_Enclave_Test_Key := Responder_Enclave/Responder_Enclave_private_test.pem
+
+
+######## Build Flag Settings ########
 
 ifeq ($(SGX_MODE), HW)
 ifeq ($(SGX_DEBUG), 1)
@@ -178,7 +268,10 @@ endif
 endif
 
 
+######## Make Command Settings ########
+
 .PHONY: all target run
+
 all: .config_$(Build_Mode)_$(SGX_ARCH)
 	@$(MAKE) target
 
@@ -193,7 +286,7 @@ target:  $(App_Name) $(Enclave_Name)
 
 
 else
-target: $(App_Name) $(Signed_Enclave_Name)
+target: $(App_Name) $(Signed_Enclave_Name) $(Initiator_Signed_Enclave_Name) $(Responder_Signed_Enclave_Name)
 ifeq ($(Build_Mode), HW_DEBUG)
 	@echo "The project has been built in debug hardware mode."
 else ifeq ($(Build_Mode), SIM_DEBUG)
@@ -220,38 +313,49 @@ endif
 
 ######## App Objects ########
 
-App/Enclave_u.h: $(SGX_EDGER8R) Enclave/Enclave.edl
+App/Enclave_u.c: $(SGX_EDGER8R) Enclave/Enclave.edl
 	@cd App && $(SGX_EDGER8R) --untrusted ../Enclave/Enclave.edl --search-path ../Enclave --search-path $(SGX_SDK)/include
 	@echo "GEN  =>  $@"
 
-App/Enclave_u.c: App/Enclave_u.h
+App/Initiator_Enclave_u.c: $(SGX_EDGER8R) Initiator_Enclave/Initiator_Enclave.edl
+	@cd App && $(SGX_EDGER8R) --untrusted ../Initiator_Enclave/Initiator_Enclave.edl --search-path ../Initiator_Enclave --search-path $(SGX_SDK)/include
+	
+App/Responder_Enclave_u.c: $(SGX_EDGER8R) Responder_Enclave/Responder_Enclave.edl
+	@cd App && $(SGX_EDGER8R) --untrusted ../Responder_Enclave/Responder_Enclave.edl --search-path ../Responder_Enclave --search-path $(SGX_SDK)/include
+	@echo "GEN  =>  $@"
 
 App/Enclave_u.o: App/Enclave_u.c
-	@$(CC) $(SGX_COMMON_CFLAGS) $(App_C_Flags) -c $< -o $@
+	@$(CC) $(App_C_Flags) -c $< -o $@
 	@echo "CC   <=  $<"
 
-App/%.o: App/%.cpp  App/Enclave_u.h
-	@$(CXX) $(SGX_COMMON_CXXFLAGS) $(App_Cpp_Flags) -c $< -o $@
+App/Initiator_Enclave_u.o: App/Initiator_Enclave_u.c
+	@$(CC) $(App_C_Flags) -c $< -o $@
+	@echo "CC   <=  $<"
+
+App/Responder_Enclave_u.o: App/Responder_Enclave_u.c
+	@$(CC) $(App_C_Flags) -c $< -o $@
+	@echo "CC   <=  $<"
+
+App/%.o: App/%.cpp
+	@$(CXX) $(App_Cpp_Flags) -c $< -o $@
 	@echo "CXX  <=  $<"
 
-$(App_Name): App/Enclave_u.o $(App_Cpp_Objects)
+$(App_Name): App/Enclave_u.o App/Initiator_Enclave_u.o App/Responder_Enclave_u.o $(App_Cpp_Objects)
 	@$(CXX) $^ -o $@ $(App_Link_Flags)
 	@echo "LINK =>  $@"
 
 ######## Enclave Objects ########
 
-Enclave/Enclave_t.h: $(SGX_EDGER8R) Enclave/Enclave.edl
+Enclave/Enclave_t.c: $(SGX_EDGER8R) Enclave/Enclave.edl
 	@cd Enclave && $(SGX_EDGER8R) --trusted ../Enclave/Enclave.edl --search-path ../Enclave --search-path $(SGX_SDK)/include
 	@echo "GEN  =>  $@"
-
-Enclave/Enclave_t.c: Enclave/Enclave_t.h
 
 Enclave/Enclave_t.o: Enclave/Enclave_t.c
 	@$(CC) $(SGX_COMMON_CFLAGS) $(Enclave_C_Flags) -c $< -o $@
 	@echo "CC   <=  $<"
 
-Enclave/%.o: Enclave/%.cpp Enclave/Enclave_t.h
-	@$(CXX) $(SGX_COMMON_CXXFLAGS) $(Enclave_Cpp_Flags) -c $< -o $@
+Enclave/%.o: Enclave/%.cpp
+	@$(CXX) $(Enclave_Cpp_Flags) -c $< -o $@
 	@echo "CXX  <=  $<"
 
 $(Enclave_Name): Enclave/Enclave_t.o $(Enclave_Cpp_Objects)
@@ -267,8 +371,67 @@ endif
 	@$(SGX_ENCLAVE_SIGNER) sign -key $(Enclave_Test_Key) -enclave $(Enclave_Name) -out $@ -config $(Enclave_Config_File)
 	@echo "SIGN =>  $@"
 
+
+######## Initiator Enclave Objects ########
+
+Initiator_Enclave/Initiator_Enclave_t.c: $(SGX_EDGER8R) Initiator_Enclave/Initiator_Enclave.edl
+	@cd Initiator_Enclave && $(SGX_EDGER8R) --trusted ../Initiator_Enclave/Initiator_Enclave.edl --search-path ../Initiator_Enclave --search-path $(SGX_SDK)/include
+	@echo "GEN  =>  $@"
+
+Initiator_Enclave/Initiator_Enclave_t.o: Initiator_Enclave/Initiator_Enclave_t.c
+	@$(CC) $(SGX_COMMON_CFLAGS) $(Initiator_Enclave_C_Flags) -c $< -o $@
+	@echo "CC   <=  $<"
+
+Initiator_Enclave/%.o: Initiator_Enclave/%.cpp
+	@$(CXX) $(Initiator_Enclave_Cpp_Flags) -c $< -o $@
+	@echo "CXX  <=  $<"
+
+$(Initiator_Enclave_Name): Initiator_Enclave/Initiator_Enclave_t.o $(Initiator_Enclave_Cpp_Objects)
+	@$(CXX) $^ -o $@ $(Initiator_Enclave_Link_Flags)
+	@echo "LINK =>  $@"
+
+$(Initiator_Signed_Enclave_Name): $(Initiator_Enclave_Name)
+ifeq ($(wildcard $(Initiator_Enclave_Test_Key)),)
+	@echo "There is no enclave test key<Initiator_Enclave_private_test.pem>."
+	@echo "The project will generate a key<Initiator_Enclave_private_test.pem> for test."
+	@openssl genrsa -out $(Initiator_Enclave_Test_Key) -3 3072
+endif
+	@$(SGX_ENCLAVE_SIGNER) sign -key $(Initiator_Enclave_Test_Key) -enclave $(Initiator_Enclave_Name) -out $@ -config $(Initiator_Enclave_Config_File)
+	@echo "SIGN =>  $@"
+
+
+######## Responder Enclave Objects ########
+
+Responder_Enclave/Responder_Enclave_t.c: $(SGX_EDGER8R) Responder_Enclave/Responder_Enclave.edl
+	@cd Responder_Enclave && $(SGX_EDGER8R) --trusted ../Responder_Enclave/Responder_Enclave.edl --search-path ../Responder_Enclave --search-path $(SGX_SDK)/include
+	@echo "GEN  =>  $@"
+
+Responder_Enclave/Responder_Enclave_t.o: Responder_Enclave/Responder_Enclave_t.c
+	@$(CC) $(SGX_COMMON_CFLAGS) $(Responder_Enclave_C_Flags) -c $< -o $@
+	@echo "CC   <=  $<"
+
+Responder_Enclave/%.o: Responder_Enclave/%.cpp
+	@$(CXX) $(Responder_Enclave_Cpp_Flags) -c $< -o $@
+	@echo "CXX  <=  $<"
+
+$(Responder_Enclave_Name): Responder_Enclave/Responder_Enclave_t.o $(Responder_Enclave_Cpp_Objects)
+	@$(CXX) $^ -o $@ $(Responder_Enclave_Link_Flags)
+	@echo "LINK =>  $@"
+
+$(Responder_Signed_Enclave_Name): $(Responder_Enclave_Name)
+ifeq ($(wildcard $(Responder_Enclave_Test_Key)),)
+	@echo "There is no enclave test key<Responder_Enclave_private_test.pem>."
+	@echo "The project will generate a key<Responder_Enclave_private_test.pem> for test."
+	@openssl genrsa -out $(Responder_Enclave_Test_Key) -3 3072
+endif
+	@$(SGX_ENCLAVE_SIGNER) sign -key $(Responder_Enclave_Test_Key) -enclave $(Responder_Enclave_Name) -out $@ -config $(Responder_Enclave_Config_File)
+	@echo "SIGN =>  $@"
+
+
 .PHONY: clean
 
 clean:
-	@rm -f .config_* $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) App/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* # $(Enclave_Test_Key)
+	@rm -f .config_* $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) App/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* 
+	@rm -f $(Initiator_Enclave_Name) $(Initiator_Signed_Enclave_Name) App/Initiator_Enclave_u.* $(Initiator_Enclave_Cpp_Objects) Initiator_Enclave/Initiator_Enclave_t.*
+	@rm -f $(Responder_Enclave_Name) $(Responder_Signed_Enclave_Name) App/Responder_Enclave_u.* $(Responder_Enclave_Cpp_Objects) Responder_Enclave/Responder_Enclave_t.*
 

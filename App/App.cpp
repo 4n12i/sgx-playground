@@ -7,12 +7,17 @@
 #include <iostream>
 #include <fstream>
 
-#include "sgx_urts.h"
+#include <sgx_urts.h>
 
 #include "Enclave_u.h" /* untrusted */
+#include "Initiator_Enclave_u.h"
+#include "Responder_Enclave_u.h"
 
 #define ENCLAVE_NAME "enclave.signed.so"
 #define SEALED_DATA_FILE "sealed.dat"
+
+#define INITIATOR_ENCLAVE_NAME "initiator_enclave.signed.so"
+#define RESPONDER_ENCLAVE_NAME "responder_enclave.signed.so"
 
 
 sgx_enclave_id_t global_eid = 0;
@@ -20,26 +25,25 @@ sgx_enclave_id_t global_eid = 0;
 
 /* helper functions
  * */
-void print_status(sgx_status_t ret)
+void print_status(sgx_status_t status)
 {
-    std::cout << "sgx_status_t: " << ret << std::endl;
-    return;
-}
+    std::cout << "sgx_status_t: ";
 
+    switch(status)
+    {
+        case 0: 
+            std::cerr << "SGX_SUCCESS" << std::endl;
+            break;
+        case 1: 
+            std::cerr << "SGX_ERROR_UNEXPECTED" << std::endl;
+            break;
+        case 2:
+            std::cerr << "SGX_ERROR_INVALID_PARAMETER" << std::endl;
+            break;
+        default: 
+            std::cerr << status << std::endl;
+    }
 
-/* OCALL (Outside CALL) implementations 
- * temporarily move from inside the enclave to outside the enclave (EEXIT)
- * and call a function outside the enclave
- * */
-void ocall_print_status(sgx_status_t ret)
-{
-    print_status(ret);
-    return;
-}
-
-void ocall_example() 
-{
-    std::cout << "output from OCALL" << std::endl;
     return;
 }
 
@@ -97,6 +101,23 @@ static bool write_buf_to_file(const char *filename, uint8_t *sealed, uint32_t se
     }
     return true;
 }
+
+
+/* OCALL (Outside CALL) implementations 
+ * temporarily move from inside the enclave to outside the enclave (EEXIT) and call a function outside the enclave
+ * */
+void ocall_print_status(sgx_status_t ret)
+{
+    print_status(ret);
+    return;
+}
+
+void ocall_example() 
+{
+    std::cout << "output from OCALL" << std::endl;
+    return;
+}
+
 
 /* read the sealed data and decrypt it */
 bool test_unseal_data()
@@ -209,7 +230,7 @@ int main()
     /* initialize the enclave */
     if (initialize_enclave(ENCLAVE_NAME, &global_eid) != 0)
     {
-        std::cerr << "failed to run the enclave." << std::endl;
+        std::cerr << "failed to run the enclave" << std::endl;
         return -1;
     }
 
@@ -233,6 +254,43 @@ int main()
 
     /* destroy the enclave */
     sgx_destroy_enclave(global_eid);
+
+
+    /* LA (Local Attestation)
+     * assert that two enclaves running on the same platform can trust each other and exchange information safely
+     * */
+    sgx_enclave_id_t initiator_enclave_eid = 0;
+    sgx_enclave_id_t responder_enclave_eid = 0;
+    if (initialize_enclave(INITIATOR_ENCLAVE_NAME, &initiator_enclave_eid) != 0)
+    {
+        std::cerr << "failed to run the enclave" << std::endl;
+        return -1;
+    }
+    if (initialize_enclave(RESPONDER_ENCLAVE_NAME, &responder_enclave_eid) != 0)
+    {
+        std::cerr << "failed to run the enclave" << std::endl;
+        return -1;
+    }
+
+    // TODO: 
+    // initialize settion (initiator and responder)
+    // get target info (responder)
+    // send public key and target info to initiator (responder)
+    // generate EREPORT and REPORT struct (initiator)
+
+    sgx_status_t ret = SGX_ERROR_UNEXPECTED;
+    int retval = -9999;
+
+    ret = initiator_ecall_example(initiator_enclave_eid, &retval);
+    print_status(ret);
+
+    ret = responder_ecall_example(responder_enclave_eid, &retval);
+    print_status(ret);
+    //std::cout << "execute responder ECALL" << std::endl;
+
+    sgx_destroy_enclave(initiator_enclave_eid);
+    sgx_destroy_enclave(responder_enclave_eid);
+
 
     std::cout << "successfully completed" << std::endl;
     return 0;
