@@ -14,18 +14,29 @@
 #define ENCLAVE_NAME "enclave.signed.so"
 #define SEALED_DATA_FILE "sealed.dat"
 
+
 sgx_enclave_id_t global_eid = 0;
 
-void ocall_print_status(sgx_status_t ret)
+
+/* helper functions
+ * */
+void print_status(sgx_status_t ret)
 {
     std::cout << "sgx_status_t: " << ret << std::endl;
+    return;
 }
 
-/* OCALL (Outside CALL) 
- * enclave -> app
+
+/* OCALL (Outside CALL) implementations 
  * temporarily move from inside the enclave to outside the enclave (EEXIT)
  * and call a function outside the enclave
  * */
+void ocall_print_status(sgx_status_t ret)
+{
+    print_status(ret);
+    return;
+}
+
 void ocall_example() 
 {
     std::cout << "output from OCALL" << std::endl;
@@ -45,7 +56,7 @@ static size_t get_file_size(const char *filename)
     return size;
 }
 
-static bool read_file_to_buf(const char *filename, uint8_t *sealed, uint32_t sealed_len)
+static bool read_file_to_buf(const char *filename, uint8_t *buf, uint32_t buf_len)
 {
     if (filename == NULL)
     {
@@ -57,7 +68,7 @@ static bool read_file_to_buf(const char *filename, uint8_t *sealed, uint32_t sea
         std::cerr << "failed to open the file \"" << filename << "\"" << std::endl;
         return false;
     }
-    ifs.read((char*)sealed, sealed_len);
+    ifs.read((char*)buf, buf_len);
     if (ifs.fail())
     {
         std::cerr << "failed to read the file \"" << filename << "\"" << std::endl;
@@ -72,7 +83,7 @@ static bool write_buf_to_file(const char *filename, uint8_t *sealed, uint32_t se
     {
         return false;
     }
-    std::ofstream ofs(filename, std::ios::binary | std::ios::out); /* prepare a file stream */
+    std::ofstream ofs(filename, std::ios::binary | std::ios::out); 
     if (!ofs.good())
     {
         std::cerr << "failed to open the file \"" << filename << "\"" << std::endl;
@@ -103,7 +114,9 @@ bool test_unseal_data()
         std::cerr << "failed to get the file size of \"" << SEALED_DATA_FILE << "\"" << std::endl;
         return false;
     }
+
     sealed = new uint8_t[sealed_len];
+
     if (!read_file_to_buf(SEALED_DATA_FILE, sealed, sealed_len))
     {
         std::cerr << "failed to read the sealed data blob from \"" << SEALED_DATA_FILE << "\"" << std::endl;
@@ -112,6 +125,7 @@ bool test_unseal_data()
 
     /* unseal the sealed blob */
     ret = ecall_calc_unsealed_len(global_eid, &unsealed_len, sealed_len, sealed);
+
     unsealed = new uint8_t[unsealed_len];
 
     ret = ecall_unseal_data(global_eid, sealed_len, sealed, unsealed_len, unsealed);
@@ -120,9 +134,8 @@ bool test_unseal_data()
         return false;
     }
 
-    std::cout << "unsealed data: " << std::string((char*)unsealed, unsealed_len) << std::endl;
-
-    std::cout << "unseal succeeded" << std::endl;
+    std::cout << "decrypted data is \"" << std::string((char*)unsealed, unsealed_len) << "\"" << std::endl;
+    std::cout << "unsealing data succeeded" << std::endl;
     return true;
 }
 
@@ -134,6 +147,7 @@ bool test_seal_data()
     uint32_t sealed_len = 0;
 
     ret = ecall_calc_sealed_len(global_eid, &sealed_len);
+
     sealed = new uint8_t[sealed_len];
 
     /* encrypt the data in enclave */
@@ -155,11 +169,11 @@ bool test_seal_data()
     return true;
 }
 
-/* call ECALL example */
 bool test_example()
 {
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
     int retval = -9999;
+
     ret = ecall_example(global_eid, &retval);
     if (ret != SGX_SUCCESS) 
     {
@@ -171,47 +185,56 @@ bool test_example()
     return true;
 }
 
-static sgx_status_t initialize_enclave(const char* enclave_path, sgx_enclave_id_t *eid) 
+int initialize_enclave(const char* enclave_path, sgx_enclave_id_t *eid) 
 {
+    /* dummy token and update flag (deprecated) */
+    sgx_launch_token_t token = {0};
+    int updated = 0;
+
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
+
     /* create and run the enclave */
-    /* args: enclave image file, debug flag (macro), launch token (formality), update flag (formality), eclave ID, pointer */
-    ret = sgx_create_enclave(enclave_path, SGX_DEBUG_FLAG, NULL, NULL, eid, NULL);
+    ret = sgx_create_enclave(enclave_path, SGX_DEBUG_FLAG, &token, &updated, eid, NULL);
+
     if (ret != SGX_SUCCESS) {
-        return ret;
+        print_status(ret);
+        return -1;
     }
-    return SGX_SUCCESS;
+
+    return 0;
 }
 
 int main()
 {
     /* initialize the enclave */
-    sgx_status_t ret = initialize_enclave(ENCLAVE_NAME, &global_eid);
-    if (ret != SGX_SUCCESS)
+    if (initialize_enclave(ENCLAVE_NAME, &global_eid) != 0)
     {
         std::cerr << "failed to run the enclave." << std::endl;
         return -1;
     }
 
-    /* start ECALL */
+    /* start ECALLs */
+    std::cout << "==============================" << std::endl;
     if (!test_example()) 
     {
         std::cerr << "test_example failed" << std::endl;
     }
+    std::cout << "==============================" << std::endl;
     if (!test_seal_data())
     {
         std::cerr << "test_seal_data failed" << std::endl;
     }
+    std::cout << "==============================" << std::endl;
     if (!test_unseal_data())
     {
         std::cerr << "test_unseal_data failed" << std::endl;
     }
+    std::cout << "==============================" << std::endl;
 
     /* destroy the enclave */
     sgx_destroy_enclave(global_eid);
 
     std::cout << "successfully completed" << std::endl;
-
     return 0;
 }
 
