@@ -72,7 +72,7 @@ SGX_COMMON_FLAGS += -Wall -Wextra -Winit-self -Wpointer-arith -Wreturn-type \
                     -Waddress -Wsequence-point -Wformat-security \
                     -Wmissing-include-dirs -Wfloat-equal -Wundef -Wshadow \
                     -Wcast-align -Wcast-qual -Wconversion -Wredundant-decls
-SGX_COMMON_CFLAGS := $(SGX_COMMON_FLAGS) -Wjump-misses-init -Wstrict-prototypes -Wunsuffixed-float-constants
+# SGX_COMMON_CFLAGS := $(SGX_COMMON_FLAGS) -Wjump-misses-init -Wstrict-prototypes -Wunsuffixed-float-constants
 # SGX_COMMON_CXXFLAGS := $(SGX_COMMON_FLAGS) -Wnon-virtual-dtor -std=c++11
 
 ######## App Settings ########
@@ -124,13 +124,7 @@ Enclave_Cpp_Files := Enclave/Enclave.cpp $(wildcard Enclave/Edger8rSyntax/*.cpp)
 Enclave_Include_Paths := -IEnclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx
 
 
-Enclave_C_Flags := $(Enclave_Include_Paths) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections $(MITIGATION_CFLAGS)
-CC_BELOW_4_9 := $(shell expr "`$(CC) -dumpversion`" \< "4.9")
-ifeq ($(CC_BELOW_4_9), 1)
-    Enclave_C_Flags += -fstack-protector
-else
-    Enclave_C_Flags += -fstack-protector-strong
-endif
+Enclave_C_Flags := $(Enclave_Include_Paths) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections -fstack-protector 
 
 Enclave_Cpp_Flags := $(Enclave_C_Flags) -nostdinc++
 
@@ -160,30 +154,13 @@ Signed_Enclave_Name := enclave.signed.so
 Enclave_Config_File := Enclave/Enclave.config.xml
 Enclave_Test_Key := Enclave/Enclave_private_test.pem
 
-
 ######## Initiator Enclave Settings ########
-
-# ifneq ($(SGX_MODE), HW)
-#     Trts_Library_Name := sgx_trts_sim
-#     Service_Library_Name := sgx_tservice_sim
-# else
-#     Trts_Library_Name := sgx_trts
-#     Service_Library_Name := sgx_tservice
-# endif
-# 
-# Crypto_Library_Name := sgx_tcrypto
 
 Initiator_Enclave_Cpp_Files := Initiator_Enclave/Initiator_Enclave.cpp 
 Initiator_Enclave_Include_Paths := -IInitiator_Enclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx 
 
 
-Initiator_Enclave_C_Flags := $(Initiator_Enclave_Include_Paths) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections $(MITIGATION_CFLAGS)
-CC_BELOW_4_9 := $(shell expr "`$(CC) -dumpversion`" \< "4.9")
-ifeq ($(CC_BELOW_4_9), 1)
-    Initiator_Enclave_C_Flags += -fstack-protector
-else
-    Initiator_Enclave_C_Flags += -fstack-protector-strong
-endif
+Initiator_Enclave_C_Flags := $(Initiator_Enclave_Include_Paths) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections -fstack-protector 
 
 Initiator_Enclave_Cpp_Flags := $(Initiator_Enclave_C_Flags) -nostdinc++ # -std=c++11
 
@@ -203,30 +180,13 @@ Initiator_Signed_Enclave_Name := initiator_enclave.signed.so
 Initiator_Enclave_Config_File := Initiator_Enclave/Enclave.config.xml
 Initiator_Enclave_Test_Key := Initiator_Enclave/Initiator_Enclave_private_test.pem
 
-
 ######## Responder Enclave Settings ########
-
-# ifneq ($(SGX_MODE), HW)
-#     Trts_Library_Name := sgx_trts_sim
-#     Service_Library_Name := sgx_tservice_sim
-# else
-#     Trts_Library_Name := sgx_trts
-#     Service_Library_Name := sgx_tservice
-# endif
-# 
-# Crypto_Library_Name := sgx_tcrypto
 
 Responder_Enclave_Cpp_Files := Responder_Enclave/Responder_Enclave.cpp 
 Responder_Enclave_Include_Paths := -IResponder_Enclave -I$(SGX_SDK)/include -I$(SGX_SDK)/include/tlibc -I$(SGX_SDK)/include/libcxx 
 
 
 Responder_Enclave_C_Flags := $(Responder_Enclave_Include_Paths) -nostdinc -fvisibility=hidden -fpie -ffunction-sections -fdata-sections $(MITIGATION_CFLAGS)
-CC_BELOW_4_9 := $(shell expr "`$(CC) -dumpversion`" \< "4.9")
-ifeq ($(CC_BELOW_4_9), 1)
-    Responder_Enclave_C_Flags += -fstack-protector
-else
-    Responder_Enclave_C_Flags += -fstack-protector-strong
-endif
 
 Responder_Enclave_Cpp_Flags := $(Responder_Enclave_C_Flags) -nostdinc++ # -std=c++11
 
@@ -246,59 +206,30 @@ Responder_Signed_Enclave_Name := responder_enclave.signed.so
 Responder_Enclave_Config_File := Responder_Enclave/Enclave.config.xml
 Responder_Enclave_Test_Key := Responder_Enclave/Responder_Enclave_private_test.pem
 
-
 ######## Build Flag Settings ########
 
 ifeq ($(SGX_MODE), HW)
-ifeq ($(SGX_DEBUG), 1)
-    Build_Mode = HW_DEBUG
-else ifeq ($(SGX_PRERELEASE), 1)
-    Build_Mode = HW_PRERELEASE
-else
-    Build_Mode = HW_RELEASE
+	ifneq ($(SGX_DEBUG), 1)
+		ifneq ($(SGX_PRERELEASE), 1)
+    		Build_Mode = HW_RELEASE
+		endif
+	endif
 endif
-else
-ifeq ($(SGX_DEBUG), 1)
-    Build_Mode = SIM_DEBUG
-else ifeq ($(SGX_PRERELEASE), 1)
-    Build_Mode = SIM_PRERELEASE
-else
-    Build_Mode = SIM_RELEASE
-endif
-endif
-
 
 ######## Make Command Settings ########
 
-.PHONY: all target run
-
-all: .config_$(Build_Mode)_$(SGX_ARCH)
-	@$(MAKE) target
+.PHONY: all run
 
 ifeq ($(Build_Mode), HW_RELEASE)
-target:  $(App_Name) $(Enclave_Name)
+all:  $(App_Name) $(Enclave_Name)
 	@echo "The project has been built in release hardware mode."
 	@echo "Please sign the $(Enclave_Name) first with your signing key before you run the $(App_Name) to launch and access the enclave."
 	@echo "To sign the enclave use the command:"
 	@echo "   $(SGX_ENCLAVE_SIGNER) sign -key <your key> -enclave $(Enclave_Name) -out <$(Signed_Enclave_Name)> -config $(Enclave_Config_File)"
 	@echo "You can also sign the enclave using an external signing tool."
 	@echo "To build the project in simulation mode set SGX_MODE=SIM. To build the project in prerelease mode set SGX_PRERELEASE=1 and SGX_MODE=HW."
-
-
 else
-target: $(App_Name) $(Signed_Enclave_Name) $(Initiator_Signed_Enclave_Name) $(Responder_Signed_Enclave_Name)
-ifeq ($(Build_Mode), HW_DEBUG)
-	@echo "The project has been built in debug hardware mode."
-else ifeq ($(Build_Mode), SIM_DEBUG)
-	@echo "The project has been built in debug simulation mode."
-else ifeq ($(Build_Mode), HW_PRERELEASE)
-	@echo "The project has been built in pre-release hardware mode."
-else ifeq ($(Build_Mode), SIM_PRERELEASE)
-	@echo "The project has been built in pre-release simulation mode."
-else
-	@echo "The project has been built in release simulation mode."
-endif
-
+all: $(App_Name) $(Signed_Enclave_Name) $(Initiator_Signed_Enclave_Name) $(Responder_Signed_Enclave_Name)
 endif
 
 run: all
@@ -306,10 +237,6 @@ ifneq ($(Build_Mode), HW_RELEASE)
 	@$(CURDIR)/$(App_Name)
 	@echo "RUN  =>  $(App_Name) [$(SGX_MODE)|$(SGX_ARCH), OK]"
 endif
-
-.config_$(Build_Mode)_$(SGX_ARCH):
-	@rm -f .config_* $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) App/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.*
-	@touch .config_$(Build_Mode)_$(SGX_ARCH)
 
 ######## App Objects ########
 
@@ -371,7 +298,6 @@ endif
 	@$(SGX_ENCLAVE_SIGNER) sign -key $(Enclave_Test_Key) -enclave $(Enclave_Name) -out $@ -config $(Enclave_Config_File)
 	@echo "SIGN =>  $@"
 
-
 ######## Initiator Enclave Objects ########
 
 Initiator_Enclave/Initiator_Enclave_t.c: $(SGX_EDGER8R) Initiator_Enclave/Initiator_Enclave.edl
@@ -398,7 +324,6 @@ ifeq ($(wildcard $(Initiator_Enclave_Test_Key)),)
 endif
 	@$(SGX_ENCLAVE_SIGNER) sign -key $(Initiator_Enclave_Test_Key) -enclave $(Initiator_Enclave_Name) -out $@ -config $(Initiator_Enclave_Config_File)
 	@echo "SIGN =>  $@"
-
 
 ######## Responder Enclave Objects ########
 
@@ -431,7 +356,7 @@ endif
 .PHONY: clean
 
 clean:
-	@rm -f .config_* $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) App/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* 
+	@rm -f $(App_Name) $(Enclave_Name) $(Signed_Enclave_Name) $(App_Cpp_Objects) App/Enclave_u.* $(Enclave_Cpp_Objects) Enclave/Enclave_t.* 
 	@rm -f $(Initiator_Enclave_Name) $(Initiator_Signed_Enclave_Name) App/Initiator_Enclave_u.* $(Initiator_Enclave_Cpp_Objects) Initiator_Enclave/Initiator_Enclave_t.*
 	@rm -f $(Responder_Enclave_Name) $(Responder_Signed_Enclave_Name) App/Responder_Enclave_u.* $(Responder_Enclave_Cpp_Objects) Responder_Enclave/Responder_Enclave_t.*
 

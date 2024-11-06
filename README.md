@@ -1,12 +1,12 @@
 # sgx-playground
 
-## Build and run in the hardware mode
+## Build and run 
 
 ```bash
 make run
 ```
 
-or 
+or  
 
 ```bash
 make
@@ -18,5 +18,6 @@ More details are [here](https://github.com/intel/linux-sgx?tab=readme-ov-file#co
 ## License
 
 [MIT](./LICENSE)  
+
 Makefile also follows Intel Open Source License.  
 
