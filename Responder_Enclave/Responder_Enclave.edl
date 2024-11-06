@@ -1,11 +1,16 @@
 enclave {
     trusted {
         /* define ECALLs here */
-        public int responder_ecall_example();
+        public int ecall_responder_proc_msg2();
+        public int ecall_responder_gen_msg1();
+        public int ecall_responder_init_session();
+
+        public int ecall_responder_example();
     };
 
     untrusted {
         /* define OCALLs here */
+        void ocall_print([in, string] const char *str);
     };
 };
 

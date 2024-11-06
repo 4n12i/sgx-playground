@@ -106,6 +106,12 @@ static bool write_buf_to_file(const char *filename, uint8_t *sealed, uint32_t se
 /* OCALL (Outside CALL) implementations 
  * temporarily move from inside the enclave to outside the enclave (EEXIT) and call a function outside the enclave
  * */
+void ocall_print(const char *s) 
+{
+    std::cout << "[OCALL] " << s << std::endl;
+    return;
+}
+
 void ocall_print_status(sgx_status_t ret)
 {
     print_status(ret);
@@ -208,7 +214,7 @@ bool test_example()
 
 int initialize_enclave(const char* enclave_path, sgx_enclave_id_t *eid) 
 {
-    /* dummy token and update flag (deprecated) */
+    /* prepare dummy token and update flag (deprecated parameters) */
     sgx_launch_token_t token = {0};
     int updated = 0;
 
@@ -258,6 +264,7 @@ int main()
 
     /* LA (Local Attestation)
      * assert that two enclaves running on the same platform can trust each other and exchange information safely
+     * see p.94 of the developer reference for more details
      * */
     sgx_enclave_id_t initiator_enclave_eid = 0;
     sgx_enclave_id_t responder_enclave_eid = 0;
@@ -272,26 +279,52 @@ int main()
         return -1;
     }
 
-    // TODO: 
-    // initialize settion (initiator and responder)
-    // get target info (responder)
-    // send public key and target info to initiator (responder)
-    // generate EREPORT and REPORT struct (initiator)
-
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
-    int retval = -9999;
+    int retval = -1;
 
-    ret = initiator_ecall_example(initiator_enclave_eid, &retval);
+    /* create ECDH sessions
+     * */
+    ret = ecall_initiator_init_session(initiator_enclave_eid, &retval);
+    // ocall_initiator_request_session(); // to responder app
+    // ecall_responder_request_session(); // to responder enclave
+    ret = ecall_responder_init_session(responder_enclave_eid, &retval);
+    
+    /* generate msg1 to get the responder’s public key and target info
+     * */
+    // ecall_initiator_request_msg1();
+    ret = ecall_responder_gen_msg1(responder_enclave_eid, &retval);
+    // send msg1 from responder enclave to initiator enclave
+
+    /* process msg1 and generate msg2
+     * */
+    ret = ecall_initiator_proc_msg1(initiator_enclave_eid, &retval);
+
+    /* send msg2 to responder and verify initiator's REPORT
+     * and then, generate msg3 to make initiator to verify responder's REPORT
+     * */
+    ret = ecall_responder_proc_msg2(responder_enclave_eid, &retval);
+
+    /* send msg3 to initiator and verify responder's REPORT
+     * initiator enclave
+     * */
+    ret = ecall_initiator_proc_msg3(initiator_enclave_eid, &retval);
+
+    /* sample calculation */
+
+
+    /* close ECDH session */
+
+
+    ret = ecall_initiator_example(initiator_enclave_eid, &retval);
     print_status(ret);
 
-    ret = responder_ecall_example(responder_enclave_eid, &retval);
+    ret = ecall_responder_example(responder_enclave_eid, &retval);
     print_status(ret);
-    //std::cout << "execute responder ECALL" << std::endl;
 
     sgx_destroy_enclave(initiator_enclave_eid);
     sgx_destroy_enclave(responder_enclave_eid);
 
-
+    std::cout << "==============================" << std::endl;
     std::cout << "successfully completed" << std::endl;
     return 0;
 }
